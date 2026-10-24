@@ -847,7 +847,8 @@ aside{width:370px;max-width:44vw;background:var(--card);border-inline-end:1px so
   </aside>
   <div id="mapwrap">
     <div id="map"></div>
-        <div class="panel">
+        <div class="warn" id="warn">خريطة جوجل مش بتتحمّل عندك. افتح الملف في Chrome أو Edge مباشرة وإنت متصل بالإنترنت. عرضت حدود المحافظات مؤقتًا.</div>
+    <div class="panel">
       <button class="fab on" id="bClu">تجميع النقاط</button>
       <button class="fab" id="bNear">أقرب فرع لموقعي</button>
     </div>
@@ -874,14 +875,16 @@ const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",
 const locText=h=>h.lat.toFixed(6)+", "+h.lon.toFixed(6);
 const isDark=()=>window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches;
 
-const map=L.map("map",{zoomControl:false,minZoom:5,maxZoom:19,zoomSnap:.5,attributionControl:false}).setView([27,30.5],6);
+const map=L.map("map",{zoomControl:false,minZoom:5,maxZoom:19,zoomSnap:.5,attributionControl:true}).setView([27,30.5],6);
 L.control.zoom({position:"bottomright"}).addTo(map);
-let cur="gov",tilesFailed=false;
+map.attributionControl.setPrefix(false);
+const gtile=L.tileLayer("https://mt{s}.google.com/vt/lyrs=m&hl=ar&gl=EG&x={x}&y={y}&z={z}",{subdomains:"0123",maxZoom:20,attribution:"Map data &copy; Google"}).addTo(map);
+let tilesFailed=false,terr=0;
 /* governorates layer (works offline) */
 const govRegion={};HUBS.forEach(h=>govRegion[h.gov]=h.region);govRegion["شمال سيناء"]=REGIONS[3];
 let govFilter=null;
 function styleGov(){
-  const vec=cur==="gov"||tilesFailed,dk=isDark(),sat=cur==="sat"||cur==="dark";
+  const vec=true,dk=isDark(),sat=false;
   govLayer.eachLayer(l=>{const n=l.feature.properties.n,sel=govFilter===n,c=RCOL[govRegion[n]]||"#999";
     l.setStyle({color:sel?c:(vec?(dk?"#12151c":"#fff"):(sat?"#fff":"#7a8194")),weight:sel?3:(vec?1.5:.8),opacity:sel?1:(vec?1:.55),
       fillColor:c,fillOpacity:sel?(vec?.55:.22):(vec?.28:.05)});
@@ -890,16 +893,22 @@ function styleGov(){
 const govLayer=L.geoJSON(GOV,{onEachFeature:(f,l)=>{
   const n=f.properties.n;
   l.on("click",()=>{govFilter=govFilter===n?null:n;styleGov();chips();refresh(true);});
-  l.on("mouseover",()=>{if(govFilter!==n)l.setStyle({fillOpacity:cur==="gov"?.5:.18});});
+  l.on("mouseover",()=>{if(govFilter!==n)l.setStyle({fillOpacity:.5});});
   l.on("mouseout",()=>styleGov());
   const b=l.getBounds(),sz=Math.max(b.getNorth()-b.getSouth(),b.getEast()-b.getWest());
   l._lbl=L.marker(b.getCenter(),{interactive:false,icon:L.divIcon({className:"gl",html:"<span>"+n+"</span>",iconSize:[0,0]})});
   l._min=sz>2.2?6:sz>1?7:sz>.5?8.5:10;
   l.bindTooltip(()=>"<b>"+n+"</b> · "+HUBS.filter(h=>h.gov===n).length+" فرع",{sticky:true});
-}}).addTo(map);
-const lblLayer=L.layerGroup().addTo(map);
+}});
+const lblLayer=L.layerGroup();
 function govLabels(){lblLayer.clearLayers();const z=map.getZoom();govLayer.eachLayer(l=>{if(z>=l._min)lblLayer.addLayer(l._lbl);});}
 map.on("zoomend",govLabels);
+function showFallback(){
+  if(tilesFailed)return;tilesFailed=true;
+  govLayer.addTo(map);lblLayer.addTo(map);govLayer.bringToBack();styleGov();govLabels();$("warn").style.display="block";
+}
+gtile.on("tileerror",()=>{if(++terr>=3)showFallback();});
+gtile.on("tileload",()=>{terr=-99999;if(tilesFailed){tilesFailed=false;map.removeLayer(govLayer);map.removeLayer(lblLayer);$("warn").style.display="none";}});
 
 
 
